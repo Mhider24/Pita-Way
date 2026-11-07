@@ -27,7 +27,34 @@ The demo uses generated data. Its error scores measure the demo only.
 
 ### Run on approved Clarkston data
 
-Place the normalized hourly CSV in the ignored `data/` directory and run:
+Run [export_toast_hourly.sql](forecasting/export_toast_hourly.sql) in the Azure
+SQL Query editor using an individual read-only database account. Download the
+results as CSV and save them under the ignored `data/` directory. The query uses
+the Toast `hourly` table for the demand targets. The combined `v_store_hour`
+view is useful for labor and sales comparisons. Scheduled hours from 7shifts
+belong to the staffing stage.
+
+```sh
+python forecasting/prepare_toast.py data/clarkston_toast.csv --output data/clarkston_hourly.csv
+python forecasting/run.py run --input data/clarkston_hourly.csv
+```
+
+If the import reports an incomplete export, run the SQL for smaller,
+nonoverlapping date ranges and pass each resulting CSV as a positional input to
+`prepare_toast.py`. The import reports the date range and counts by hour status.
+Check that the date range matches the intended export before training. An
+existing output file is preserved. Use a new output filename for a new snapshot.
+
+The sales target is the source's hourly net sales before refunds. Confirm the
+definition with the team before comparing against totals from another source.
+Review unusual days and gift-card activity before agreeing on any adjustments.
+The import preserves the source values. Absent hours stay unavailable. For
+verified closures, supply an optional local text file with one ISO date per line
+using `--closed-dates`. A local source hour that cannot be placed on the UTC
+timeline unambiguously is reported and skipped. If only some hours are scored,
+read the hourly errors with their coverage. Daily metrics require complete days.
+
+If you already have a normalized hourly CSV, you can run it directly:
 
 ```sh
 python forecasting/run.py run --input data/clarkston_hourly.csv
