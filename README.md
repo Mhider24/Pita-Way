@@ -25,6 +25,18 @@ python forecasting/run.py demo
 
 The demo uses generated data. Its error scores measure the demo only.
 
+To try the XGBoost candidate on the same sample data:
+
+```sh
+python -m pip install -r forecasting/requirements-xgboost.txt
+python forecasting/run.py --model xgboost demo
+```
+
+The XGBoost package uses the CPU. Set `--model xgboost` before `demo` or
+`run`. Each run compares its selected candidate against the same seasonal
+baseline and records the model in `metrics.json`. Use the same input,
+forecast start and fold count when comparing the two candidates.
+
 ### Run on approved Clarkston data
 
 Run [export_toast_hourly.sql](forecasting/export_toast_hourly.sql) in the Azure

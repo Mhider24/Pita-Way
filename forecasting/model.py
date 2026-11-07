@@ -7,6 +7,7 @@ from hourly_data import TARGETS, TIMEZONE
 
 LAG_WEEKS = (1, 2, 3, 4)
 METHODS = ("baseline", "candidate")
+MODEL_CHOICES = ("sklearn", "xgboost")
 
 
 def local_clock(hours: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -33,7 +34,34 @@ def features(hours: pd.DatetimeIndex, history: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def fit(history: pd.DataFrame) -> dict:
+def new_regressor(model_name: str):
+    if model_name == "xgboost":
+        try:
+            from xgboost import XGBRegressor
+        except ImportError as error:
+            raise ValueError(
+                "Install the XGBoost dependencies from forecasting/requirements-xgboost.txt."
+            ) from error
+        return XGBRegressor(
+            objective="reg:squarederror",
+            tree_method="hist",
+            device="cpu",
+            n_estimators=150,
+            max_depth=4,
+            learning_rate=0.1,
+            n_jobs=2,
+            random_state=42,
+        )
+    return HistGradientBoostingRegressor(
+        max_iter=150,
+        max_leaf_nodes=15,
+        l2_regularization=1.0,
+        early_stopping=False,
+        random_state=42,
+    )
+
+
+def fit(history: pd.DataFrame, model_name: str = "sklearn") -> dict:
     observed = history.dropna(subset=TARGETS)
     if len(observed) < 168 or observed.index[-1] - observed.index[0] < pd.Timedelta(weeks=4):
         raise ValueError("Each training window needs over four weeks of history and 168 usable hours.")
@@ -42,13 +70,7 @@ def fit(history: pd.DataFrame) -> dict:
     models = {}
     with threadpool_limits(limits=2):
         for target in TARGETS:
-            model = HistGradientBoostingRegressor(
-                max_iter=150,
-                max_leaf_nodes=15,
-                l2_regularization=1.0,
-                early_stopping=False,
-                random_state=42,
-            )
+            model = new_regressor(model_name)
             models[target] = model.fit(inputs, observed[target])
     return models
 

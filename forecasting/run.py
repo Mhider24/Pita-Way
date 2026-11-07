@@ -9,9 +9,9 @@ import joblib
 import pandas as pd
 
 from hourly_data import STORE, TARGETS, TIMEZONE, demo_data, midnight, read_history, week_hours
-from model import fit, predict, scores
+from model import MODEL_CHOICES, fit, predict, scores
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 def write_csv(frame: pd.DataFrame, path: Path) -> None:
@@ -24,7 +24,12 @@ def write_csv(frame: pd.DataFrame, path: Path) -> None:
 
 
 def execute(
-    input_path: Path, output_root: Path, start: date | None, folds: int, synthetic: bool
+    input_path: Path,
+    output_root: Path,
+    start: date | None,
+    folds: int,
+    synthetic: bool,
+    model_name: str = "sklearn",
 ) -> Path:
     source, digest = read_history(input_path)
     usable = source.dropna(subset=TARGETS)
@@ -46,7 +51,7 @@ def execute(
         fold_start = start - timedelta(weeks=weeks)
         hours = week_hours(fold_start)
         past = history.loc[history.index < hours[0]]
-        predictions = predict(hours, past, fit(past))
+        predictions = predict(hours, past, fit(past, model_name))
         comparison = predictions.join(history.reindex(hours))
         comparison["status"] = comparison["status"].fillna("omitted")
         comparison.insert(0, "forecast_start_local_date", fold_start.isoformat())
@@ -60,13 +65,15 @@ def execute(
     if evaluation[TARGETS[0]].notna().sum() == 0:
         raise ValueError("No usable actuals in the evaluation windows.")
 
-    models = fit(history)
+    models = fit(history, model_name)
     forecast = predict(week_hours(start), history, models)
     created = datetime.now(timezone.utc)
     run_id = f"{created:%Y%m%dT%H%M%SZ}-{uuid4().hex[:10]}"
     report = {
         "run_id": run_id,
         "starter_version": VERSION,
+        "candidate_model": model_name,
+        "candidate_estimator": type(models[TARGETS[0]]).__name__,
         "created_utc": created.isoformat(),
         "store_id": STORE,
         "timezone": TIMEZONE.key,
@@ -104,6 +111,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train and backtest the Clarkston hourly forecast.")
     parser.add_argument("--output", type=Path, default=Path("runs"))
     parser.add_argument("--folds", type=int, default=4, help="Number of weekly backtest windows.")
+    parser.add_argument(
+        "--model", choices=MODEL_CHOICES, default="sklearn", help="Candidate model to train."
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("demo", help="Run the full pipeline on generated sample data.")
     real = subcommands.add_parser("run", help="Run on an approved, normalized hourly CSV.")
@@ -120,9 +130,14 @@ def main() -> None:
             with TemporaryDirectory() as directory:
                 sample = Path(directory) / "synthetic.csv"
                 demo_data().to_csv(sample, index=False)
-                result = execute(sample, args.output, None, args.folds, synthetic=True)
+                result = execute(
+                    sample, args.output, None, args.folds, synthetic=True, model_name=args.model
+                )
         else:
-            result = execute(args.input, args.output, args.start_date, args.folds, synthetic=False)
+            result = execute(
+                args.input, args.output, args.start_date, args.folds, synthetic=False,
+                model_name=args.model,
+            )
     except (OSError, ValueError) as error:
         parser.exit(1, f"Forecast run failed: {error}\n")
     print(f"Forecast, backtest, metrics and fitted model saved to {result}")
