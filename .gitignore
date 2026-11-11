@@ -1,5 +1,0 @@
-node_modules
-dist
-*.local
-pnpm-lock.yaml
-pnpm-workspace.yaml
